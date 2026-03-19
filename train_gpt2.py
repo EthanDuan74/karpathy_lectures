@@ -153,5 +153,49 @@ class GPT(nn.Module):
 
 
 # -----------------------------------------------------------------------------
+import tiktoken
+
+def generate_text(model, enc, text, num_samples=5, max_new_tokens=30, top_k=50, device='cuda', seed=None):
+    """Autoregressive text generation engine"""
+    model.eval()
+    model.to(device)
+
+    # encode prefix and create batch
+    tokens = enc.encode(text)
+    tokens = torch.tensor(tokens, dtype=torch.long, device=device)
+    x = tokens.unsqueeze(0).repeat(num_samples, 1) # (B, T)
+
+    # for reproducibility
+    if seed is not None:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+    
+    max_length = x.size(1) + max_new_tokens
+
+    with torch.no_grad():
+        while x.size(1) < max_length:
+            logits = model(x) # (B, T, vocab_size)
+            logits = logits[:, -1, :] # 注意-1截取之后中间的维度会消失 (B, vocab_size)
+            
+            probs = F.softmax(logits, dim=-1)
+            
+            # Top-K sampling
+            topk_probs, topk_indices = probs.topk(top_k, dim=-1)
+            ix = torch.multinomial(topk_probs, num_samples=1) # (B, 1)
+            xcol = torch.gather(topk_indices, dim=-1, index=ix) # (B, 1)
+            
+            # concatination
+            x = torch.cat((x, xcol), dim=1) # (B, T+1)
+
+    # 4. 批量解码输出
+    for i in range(num_samples):
+        generated_tokens = x[i].tolist()
+        print(f"Sample {i+1}: {enc.decode(generated_tokens)}\n")
+
+print("Loading model and encoder...")
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = GPT.from_pretrained('gpt2')
-print("didn't crash yay!")
+enc = tiktoken.get_encoding('gpt2')
+
+print("\nGenerating...")
+generate_text(model, enc, "Hello, I'm a language model,", num_samples=5, max_new_tokens=30, device=device, seed=42)
