@@ -25,7 +25,7 @@ class MLP(nn.Module):
     def forward(self, x):
         x = self.c_fc(x)
         x = self.gelu(x)
-        x = self.proj(x)
+        x = self.c_proj(x)
         return x
     
 class CausalSelfAttention(nn.Module):
